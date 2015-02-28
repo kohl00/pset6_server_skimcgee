@@ -1,9 +1,6 @@
-//
 // server.c
-//
 // David J. Malan
 // malan@harvard.edu
-//
 
 // feature test macro requirements
 #define _GNU_SOURCE
@@ -19,7 +16,7 @@
 // number of octets for buffered reads
 #define OCTETS 512
 
-#define HTTP_METHOD  0
+#define HTTP_METHOD 0
 #define REQ_PATH 1
 #define HTTP_V 2
 
@@ -149,7 +146,8 @@ int main(int argc, char* argv[])
             // log request-line
             printf("%s", line);
 
-            // TODO: validate request-line
+            // TODO:
+            //validate request-line
             char requestTokens[needle - haystack + 1];
             strncpy(requestTokens, haystack, needle - haystack);
             requestTokens[needle - haystack] = '\0';
@@ -157,57 +155,45 @@ int main(int argc, char* argv[])
             // extract http-method, target/path, http-version(1.1)))
             // from the request-line. Put whitespace separated pieces
             // into an array to loop thru and then compare.
-            char* requestLine[3] = { NULL, NULL, NULL };
+            char* requestLine[3] = {NULL,NULL,NULL};
             requestLine[HTTP_METHOD] = strtok(requestTokens," ");
             int i = 0; //or HTTP_METHOD
             while (requestLine[i] != NULL && i < 2)
             {
-                i++;
-                requestLine[i] = strtok(NULL, " ");
+              i++;
+              requestLine[i] = strtok(NULL, " ");
             }
-            
-            // make sure method is GET
             if (requestLine[HTTP_METHOD] == NULL || 
-                strcmp("GET", requestLine[HTTP_METHOD]) != 0)
+              strcmp("GET", requestLine[HTTP_METHOD]) != 0)
             {
-                // if isnt GET reply with error 405
-                error(405);
-                continue;
+              // if isnt GET reply with error 405
+              // make sure method is GET
+              error(405);
+              continue;
             }
-
             // validate target
-            if (requestLine[REQ_PATH] == NULL)
-            {
-                // reply Bad Request
-                error(400);
-                continue;
+            if (requestLine[REQ_PATH] == NULL){
+              // reply Bad Request
+              error(400);
+              continue;
+            }else if (requestLine[REQ_PATH][0] != '/'){
+             // make sure target begins with a "/"
+             // error
+             error(501);
+             continue;
+            }else if(strchr(requestLine[REQ_PATH], '\"') != NULL){
+             // no "" double quotes allowed in request line
+             // Bad Request
+             error(400);
+             continue;
             }
-            // make sure target begins with a "/"
-            else if (requestLine[REQ_PATH][0] != '/')
-            {
-                // error
-                error(501);
-                continue;
-            }
-            // no "" double quotes allowed in request line
-            else if(strchr(requestLine[REQ_PATH], '\"') != NULL)
-            {
-                // Bad Request
-                error(400);
-                continue;
-            }
-
             // validate http verison is 1.1
-            if (requestLine[HTTP_V] == NULL || 
-                strcmp("HTTP/1.1", requestLine[HTTP_V]) != 0)
-            {
+            if (requestLine[HTTP_V] == NULL || strcmp("HTTP/1.1", requestLine[HTTP_V]) != 0){
                 // reply HTTP Version Not Supported
                 error(505);
                 continue;
-            }
-               
+            }  
             // TODO: extract query from request-target
-            
             //locate ? in path and end of string aka \0 or null terminator
             //if difference is less than 1 set to 1 else capture in query.
             char* query_present = strchrnul(requestLine[REQ_PATH], '?');
@@ -215,159 +201,118 @@ int main(int argc, char* argv[])
             char* eos_present = strchr(requestLine[REQ_PATH], '\0');
             //eos equiv to end of string
             char query[(eos_present - query_present < 1) ? 1 : eos_present - query_present];
-            memcpy(
-                query, 
-                (strncmp(query_present, "\0", 1) == 0) ? query_present : query_present + 1, 
-                (eos_present - query_present < 1) ? 1 : eos_present - query_present
-            );
+            memcpy(query,(strncmp(query_present, "\0", 1) == 0) ? query_present : query_present + 1,(eos_present - query_present < 1) ? 1 : eos_present - query_present);
             //memcpy copys third arg # chars of second arg memory to first arg
             // get the absolute-path
             query_present = strchrnul(requestLine[REQ_PATH], '?');
             char absPath[queryInd - requestLine[REQ_PATH] + 1];
-            strncpy(
-                absPath, 
-                requestLine[REQ_PATH], 
-                query_present - requestLine[REQ_PATH]
-            );
+            strncpy(absPath,requestLine[REQ_PATH],query_present - requestLine[REQ_PATH]);
             absPath[query_present - requestLine[REQ_PATH]] = '\0';
-            
             //absPath missing a "." for the extension?
             char* extInd = strchr(absPath, '.');
-            if (extInd == NULL)
-            {
-                // reply Not Implemented
-                error(501);
-                continue;
+            if (extInd == NULL){
+              // reply 
+              error(501);
+              continue;
             }
-
             // extract path's extension
             eos_present = strchr(absPath, '\0');
             char extension[eos_present - extInd];
             memcpy(extension, extInd + 1, eos_present - extInd);
-
-
             // TODO: concatenate root and absolute-path
             //char path[] = "TODO";
             char path[strlen(root) + strlen(absPath) + 1];
             strcpy(path, root);
             strcat(path, absPath);
-
             // TODO: ensure path exists
             if (access(path, F_OK) == -1)
             {
-                error(404);
-                continue;
+              error(404);
+              continue;
             }
-            
             // TODO: ensure path is readable
-             if (access(path, R_OK) == -1)
+            if (access(path, R_OK) == -1)
             {
-                error(403);
-                continue;
+              error(403);
+              continue;
             }
- 
             // TODO: extract path's extension
             char extension[] = "TODO";
-
             // dynamic content
-            if (strcasecmp("php", extension) == 0)
-            {
-                // open pipe to PHP interpreter
-                char* format = "QUERY_STRING=\"%s\" REDIRECT_STATUS=200 SCRIPT_FILENAME=\"%s\" php-cgi";
-                char command[strlen(format) + (strlen(path) - 2) + (strlen(query) - 2) + 1];
-                sprintf(command, format, query, path);
-                file = popen(command, "r");
-                if (file == NULL)
-                {
-                    error(500);
-                    continue;
-                }
-
+            if (strcasecmp("php", extension) == 0){
+              // open pipe to PHP interpreter
+              char* format = "QUERY_STRING=\"%s\" REDIRECT_STATUS=200 SCRIPT_FILENAME=\"%s\" php-cgi";
+              char command[strlen(format) + (strlen(path) - 2) + (strlen(query) - 2) + 1];
+              sprintf(command, format, query, path);
+              file = popen(command, "r");
+              if(file == NULL){
+                 error(500);
+                 continue;
+               }
                 // load file
                 ssize_t size = load();
-                if (size == -1)
-                {
-                    error(500);
-                    continue;
+                if (size == -1){
+                  error(500);
+                  continue;
                 }
-
                 // subtract php-cgi's headers from body's size to get content's length
                 haystack = body;
                 needle = memmem(haystack, size, "\r\n\r\n", 4);
-                if (needle == NULL)
-                {
-                    error(500);
-                    continue;
+                if (needle == NULL){
+                  error(500);
+                  continue;
                 }
                 size_t length = size - (needle - haystack + 4);
-
                 // respond to client
-                if (dprintf(cfd, "HTTP/1.1 200 OK\r\n") < 0)
-                {
+                if(dprintf(cfd, "HTTP/1.1 200 OK\r\n") < 0){
+                  continue;
+                }
+                if(dprintf(cfd, "Connection: close\r\n") < 0){
+                  continue;
+                }
+                if(dprintf(cfd, "Content-Length: %i\r\n", length) < 0){
+                  continue;
+                }
+                if (write(cfd, body, size) == -1){
                     continue;
                 }
-                if (dprintf(cfd, "Connection: close\r\n") < 0)
-                {
-                    continue;
-                }
-                if (dprintf(cfd, "Content-Length: %i\r\n", length) < 0)
-                {
-                    continue;
-                }
-                if (write(cfd, body, size) == -1)
-                {
-                    continue;
-                }
-            }             
-            else  // static content
-            {
+            }else{  // static content
                 // look up file's MIME type
-                const char* type = lookup(extension);
-                if (type == NULL)
-                {
-                    error(501);
-                    continue;
-                }
-
+              const char* type = lookup(extension);
+              if(type == NULL){
+                  error(501);
+                  continue;
+               }
                 // open file
-                file = fopen(path, "r");
-                if (file == NULL)
-                {
-                    error(500);
-                    continue;
-                }
-
+              file = fopen(path, "r");
+              if(file == NULL){
+                 error(500);
+                 continue;
+              }
                 // load file
                 ssize_t length = load();
-                if (length == -1)
-                {
-                    error(500);
-                    continue;
-                }
-
+              if(length == -1){
+                 error(500);
+                 continue;
+               }
                 // TODO: respond to client
-                 if (dprintf(cfd, "HTTP/1.1 200 OK\r\n") < 0)
-                {
-                    continue;
-                }
-                if (dprintf(cfd, "Connection: close\r\n") < 0)
-                {
-                    continue;
-                }
-                if (dprintf(cfd, "Content-Length: %i\r\n", length) < 0)
-                {
-                    continue;
-                }
-                if (dprintf(cfd, "Content-Type: %s\r\n\r\n", type) < 0)
-                {
-                    continue;
-                }
-                if (write(cfd, body, length) == -1)
-                {
-                    continue;
-                }
+              if(dprintf(cfd, "HTTP/1.1 200 OK\r\n") < 0){
+                 continue;
+              }
+              if(dprintf(cfd, "Connection: close\r\n") < 0){
+                 continue;
+              }
+              if(dprintf(cfd, "Content-Length: %i\r\n", length) < 0){
+                 continue;
+              }
+              if(dprintf(cfd, "Content-Type: %s\r\n\r\n", type) < 0)
+              {
+                 continue;
+              }
+              if(write(cfd, body, length) == -1){
+                 continue;
+              }
             }
-            
             // announce OK
             printf("\033[32m");
             printf("HTTP/1.1 200 OK");
@@ -382,13 +327,12 @@ int main(int argc, char* argv[])
  */
 bool connected(void)
 {
-    struct sockaddr_in cli_addr;
-    memset(&cli_addr, 0, sizeof(cli_addr));
-    socklen_t cli_len = sizeof(cli_addr);
-    cfd = accept(sfd, (struct sockaddr*) &cli_addr, &cli_len);
-    if (cfd == -1)
-    {
-        return false;
+  struct sockaddr_in cli_addr;
+  memset(&cli_addr, 0, sizeof(cli_addr));
+  socklen_t cli_len = sizeof(cli_addr);
+  cfd = accept(sfd, (struct sockaddr*) &cli_addr, &cli_len);
+    if (cfd == -1){
+      return false;
     }
     return true;
 }
@@ -399,15 +343,14 @@ bool connected(void)
 bool error(unsigned short code)
 {
     // ensure client's socket is open
-    if (cfd == -1)
+    if(cfd == -1)
     {
-        return false;
+      return false;
     }
-
     // ensure code is within range
-    if (code < 400 || code > 599)
+    if(code < 400 || code > 599)
     {
-        return false;
+      return false;
     }
 
     // determine Status-Line's phrase
@@ -584,7 +527,6 @@ const char* lookup(const char* extension)
      if(strcasecmp("jpg",strlwr(extension)) == 0){
        return "image/jpeg";
      }
-     
      if(strcasecmp("js",strlwr(extension)) == 0){
        return "text/javascript";
      }
@@ -594,74 +536,60 @@ const char* lookup(const char* extension)
     }
     return NULL;
 }
-
 /**
  * Parses an HTTP request.
  */
 ssize_t parse(void)
 {
     // ensure client's socket is open
-    if (cfd == -1)
-    {
-        return -1;
-    }
-
-    // ensure request isn't already parsed
-    if (request != NULL)
-    {
-        return -1;
-    }
-
+   if (cfd == -1)
+   {
+      return -1;
+   }
+   // ensure request isn't already parsed
+   if (request != NULL)
+   {
+      return -1;
+   }
     // buffer for octets
-    octet buffer[OCTETS];
+   octet buffer[OCTETS];
 
     // parse request
-    ssize_t length = 0;
-    while (true)
-    {
+   ssize_t length = 0;
+   
+   while (true){
         // read from socket
-        ssize_t octets = read(cfd, buffer, sizeof(octet) * OCTETS);
-        if (octets == -1)
-        {
-            error(500);
-            return -1;
-        }
-
+     ssize_t octets = read(cfd, buffer, sizeof(octet) * OCTETS);
+     if(octets == -1){
+        error(500);
+        return -1;
+     }
         // if octets have been read, remember new length
-        if (octets > 0)
-        {
-            request = realloc(request, length + octets);
-            if (request == NULL)
-            {
-                return -1;
-            }
-            memcpy(request + length, buffer, octets);
-            length += octets;
-        }
-
-        // else if nothing's been read, socket's been closed
-        else
-        {
+     if(octets > 0){
+       request = realloc(request, length + octets);
+         if(request == NULL){
             return -1;
-        }
-
+          }
+           memcpy(request + length, buffer, octets);
+           length += octets;
+     }else{
+       return -1;
+     }
         // search for CRLF CRLF
-        int offset = (length - octets < 3) ? length - octets : 3;
-        char* haystack = request + length - octets - offset;
-        char* needle = memmem(haystack, request + length - haystack, "\r\n\r\n", 4);
-        if (needle != NULL)
-        {
+       int offset = (length - octets < 3) ? length - octets : 3;
+       char* haystack = request + length - octets - offset;
+       char* needle = memmem(haystack, request + length - haystack, "\r\n\r\n", 4);
+       if(needle != NULL){
             // trim to one CRLF and null-terminate
             length = needle - request + 2 + 1;
             request = realloc(request, length);
             if (request == NULL)
             {
-                return -1;
+               return -1;
             }
             request[length - 1] = '\0';
             break;
         }
-
         // if buffer's full and we still haven't found CRLF CRLF,
         // then request is too large
         if (length - 1 >= LimitRequestLine + LimitRequestFields * LimitRequestFieldSize)
@@ -679,29 +607,24 @@ ssize_t parse(void)
 void reset(void)
 {
     // free response's body
-    if (body != NULL)
-    {
-        free(body);
-        body = NULL;
+    if(body != NULL){
+       free(body);
+       body = NULL;
     }
 
     // close file
-    if (file != NULL)
-    {
-        fclose(file);
-        file = NULL;
+    if(file != NULL){
+      fclose(file);
+      file = NULL;
     }
 
     // free request
-    if (request != NULL)
-    {
-        free(request);
-        request = NULL;
+    if(request != NULL){
+      free(request);
+      request = NULL;
     }
-
     // close client's socket
-    if (cfd != -1)
-    {
+    if(cfd != -1){
         close(cfd);
         cfd = -1;
     }
@@ -714,21 +637,21 @@ void start(short port, const char* path)
 {
     // path to server's root
     root = realpath(path, NULL);
-    if (root == NULL)
+    if(root == NULL)
     {
-        stop();
+      stop();
     }
 
     // ensure root exists
-    if (access(root, F_OK) == -1)
+    if(access(root, F_OK) == -1)
     {
-        stop();
+      stop();
     }
 
     // ensure root is executable
-    if (access(root, X_OK) == -1)
+    if(access(root, X_OK) == -1)
     {
-        stop();
+      stop();
     }
 
     // announce root
@@ -759,17 +682,17 @@ void start(short port, const char* path)
     }
 
     // listen for connections
-    if (listen(sfd, SOMAXCONN) == -1)
+    if(listen(sfd, SOMAXCONN) == -1)
     {
-        stop();
+      stop();
     }
 
     // announce port in use
     struct sockaddr_in addr;
     socklen_t addrlen = sizeof(addr);
-    if (getsockname(sfd, (struct sockaddr*) &addr, &addrlen) == -1)
+    if(getsockname(sfd, (struct sockaddr*) &addr, &addrlen) == -1)
     {
-        stop();
+      stop();
     }
     printf("\033[33m");
     printf("Listening on port %i", ntohs(addr.sin_port));
@@ -790,13 +713,13 @@ void stop(void)
     // free root, which was allocated by realpath
     if (root != NULL)
     {
-        free(root);
+      free(root);
     }
 
     // close server socket
     if (sfd != -1)
     {
-        close(sfd);
+      close(sfd);
     }
 
     // terminate process
